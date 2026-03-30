@@ -32,11 +32,12 @@ export interface Assignment {
   priority: AssignmentPriority
   status: AssignmentStatus
   due_date: string | null
-  assignee_id: string | null
   schedule_id: string | null
   created_by: string | null
   created_at: string
   updated_at: string
+  assignment_assignees?: any[]
+  assignment_tags?: any[]
 }
 
 export interface Tag {
@@ -52,4 +53,21 @@ export interface Template {
     priority: AssignmentPriority
     created_by: string
     created_at: string
+}
+
+
+
+export interface AssignmentHistory {
+    id: string
+    assignment_id: string
+    changed_by: string | null
+    changes: Record<string, { old: any, new: any }>
+    created_at: string
+    profile?: Profile
+}
+
+export interface AssignmentWithDetails extends Assignment {
+    tags?: Tag[]
+    assignees?: Profile[]
+    history?: AssignmentHistory[]
 }

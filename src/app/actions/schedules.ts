@@ -70,5 +70,54 @@ export async function deleteSchedule(id: string) {
     if (error) return { error: error.message }
     
     revalidatePath("/")
+    revalidatePath("/?tab=schedules")
+    return { success: true }
+}
+
+export async function getSchedule(id: string) {
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+        .from('schedules')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+    if (error) return null;
+    return data;
+}
+
+export async function updateSchedule(id: string, formData: FormData) {
+    const supabase = await createClient()
+
+    const title = formData.get("title") as string
+    const description = formData.get("description") as string
+    const recurrence_type = formData.get("recurrence_type") as ScheduleType
+    const priority = formData.get("priority") as AssignmentPriority
+    const default_assignee_id = formData.get("default_assignee_id") as string || null
+    const trigger_time = formData.get("trigger_time") as string || "09:00:00"
+    let configStr = formData.get("config") as string || "{}"
+    
+    let config = {}
+    try {
+        config = JSON.parse(configStr)
+    } catch (e) {
+        config = {}
+    }
+
+    const { error } = await supabase.from('schedules').update({
+        title,
+        description,
+        recurrence_type,
+        priority,
+        default_assignee_id,
+        trigger_time,
+        config
+    }).eq('id', id)
+
+    if (error) return { error: error.message }
+
+    revalidatePath("/")
+    revalidatePath("/?tab=schedules")
     return { success: true }
 }

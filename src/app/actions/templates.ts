@@ -3,6 +3,15 @@
 import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 
+export async function getTemplates() {
+    const supabase = await createClient()
+    const { data } = await supabase
+        .from('templates')
+        .select('*')
+        .order('created_at', { ascending: false })
+    return data || []
+}
+
 export async function createTemplate(formData: FormData) {
   const supabase = await createClient()
 

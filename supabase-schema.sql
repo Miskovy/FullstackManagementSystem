@@ -80,7 +80,6 @@ create table public.assignments (
   priority text default 'medium' not null check (priority in ('low', 'medium', 'high', 'urgent')),
   status assignment_status default 'pending' not null,
   due_date timestamp with time zone,
-  assignee_id uuid references public.profiles(id) on delete set null,
   schedule_id uuid references public.schedules(id) on delete set null,
   created_by uuid references public.profiles(id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
@@ -115,6 +114,12 @@ create table public.assignment_tags (
   primary key (assignment_id, tag_id)
 );
 
+create table public.assignment_assignees (
+  assignment_id uuid references public.assignments(id) on delete cascade not null,
+  assignee_id uuid references public.profiles(id) on delete cascade not null,
+  primary key (assignment_id, assignee_id)
+);
+
 -- ==========================================
 -- 6. Assignment History
 -- ==========================================
@@ -126,6 +131,34 @@ create table public.assignment_history (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+-- Trigger to auto-log changes to assignments
+create or replace function public.log_assignment_history()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  changes jsonb := '{}'::jsonb;
+begin
+  if old.title is distinct from new.title then changes := jsonb_set(changes, '{title}', jsonb_build_object('old', old.title, 'new', new.title)); end if;
+  if old.description is distinct from new.description then changes := jsonb_set(changes, '{description}', jsonb_build_object('old', old.description, 'new', new.description)); end if;
+  if old.priority is distinct from new.priority then changes := jsonb_set(changes, '{priority}', jsonb_build_object('old', old.priority, 'new', new.priority)); end if;
+  if old.status is distinct from new.status then changes := jsonb_set(changes, '{status}', jsonb_build_object('old', old.status, 'new', new.status)); end if;
+  if old.due_date is distinct from new.due_date then changes := jsonb_set(changes, '{due_date}', jsonb_build_object('old', old.due_date, 'new', new.due_date)); end if;
+
+  if changes != '{}'::jsonb then
+    insert into public.assignment_history (assignment_id, changed_by, changes)
+    -- coalesce to the auth.uid() that made the request. Fallback to modified created_by internally if api triggered without user
+    values (new.id, coalesce(auth.uid(), new.created_by), changes);
+  end if;
+  return new;
+end;
+$$;
+
+create trigger assignment_history_trigger
+after update on public.assignments
+for each row execute procedure public.log_assignment_history();
+
 -- ==========================================
 -- 7. Row Level Security (RLS)
 -- ==========================================
@@ -134,6 +167,7 @@ alter table public.schedules enable row level security;
 alter table public.assignments enable row level security;
 alter table public.tags enable row level security;
 alter table public.assignment_tags enable row level security;
+alter table public.assignment_assignees enable row level security;
 alter table public.assignment_history enable row level security;
 
 -- Profiles: Anyone can read profiles. Users can update their own profile. Admins can update any.
@@ -155,6 +189,7 @@ create policy "Schedules manipulatable by authenticated" on public.schedules for
 -- Tags: Read by all, manipulated by all
 create policy "Tags accessible by authenticated" on public.tags for all using (auth.role() = 'authenticated');
 create policy "Assignment Tags accessible by authenticated" on public.assignment_tags for all using (auth.role() = 'authenticated');
+create policy "Assignment Assignees accessible by authenticated" on public.assignment_assignees for all using (auth.role() = 'authenticated');
 
 -- History: Read-only for authenticated, insert via trigger or API only
 create policy "History readable by authenticated" on public.assignment_history for select using (auth.role() = 'authenticated');
